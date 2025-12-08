@@ -200,7 +200,7 @@ impl Settings {
             ),
         };
         let binary_extension = match package_type {
-            Some(PackageType::WindowsMsi) => ".exe",
+            Some(PackageType::WindowsMsi) | Some(PackageType::WxsMsi) => ".exe",
             _ => "",
         };
         binary_name += binary_extension;

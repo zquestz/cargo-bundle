@@ -12,8 +12,8 @@ const UUID_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
 pub fn bundle_project(settings: &Settings) -> crate::Result<Vec<PathBuf>> {
     crate::bundle::common::print_warning("MSI bundle support is still experimental.")?;
 
-    let base_dir = settings.project_out_directory();
-    std::fs::create_dir_all(base_dir)?;
+    let base_dir = settings.project_out_directory().join("bundle").join("wxsmsi");
+    std::fs::create_dir_all(&base_dir)?;
 
     // Generate .wixproj file
     let wixproj_path = base_dir.join("installer.wixproj");
@@ -29,15 +29,20 @@ pub fn bundle_project(settings: &Settings) -> crate::Result<Vec<PathBuf>> {
         "release" => "Release",
         _ => "Debug",
     };
+    // Run dotnet build from the directory containing the wixproj file
     let output = std::process::Command::new("dotnet")
-        .args(["build", wixproj_path.to_str().unwrap(), "-c", configuration])
-        .current_dir(base_dir)
+        .args(["build", "installer.wixproj", "-c", configuration])
+        .current_dir(&base_dir)
         .output()?;
 
     if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(anyhow::anyhow!(
-            "Failed to build MSI: {}",
-            String::from_utf8_lossy(&output.stderr)
+            "Failed to build MSI.\nWorking directory: {:?}\nStdout: {}\nStderr: {}",
+            base_dir,
+            stdout,
+            stderr
         ));
     }
 
@@ -74,8 +79,11 @@ fn generate_wixproj_file(settings: &Settings) -> String {
 
 fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> {
     let product_name = settings.bundle_name();
-    let version = settings.version_string();
-    let manufacturer = settings.authors_comma_separated().unwrap_or_default();
+    let version = sanitize_version_for_wix(&settings.version_string().to_string());
+    let manufacturer = settings
+        .authors_comma_separated()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| product_name.to_string());
     let name = product_name.to_string() + manufacturer.as_str();
     let upgrade_code = uuid::Uuid::new_v5(&UUID_NAMESPACE, name.as_bytes())
         .to_string()
@@ -718,6 +726,25 @@ fn rtf_safe_content(origin_content: &str) -> String {
 }}"#
     );
     rtf_output
+}
+
+// Converts a version string to WiX-compatible format (a.b.c.d where a, b, c, d are integers).
+// WiX requires: major.minor.build.revision format with all numeric parts.
+// Pre-release tags like "-beta1" or "+build" are stripped.
+fn sanitize_version_for_wix(version: &str) -> String {
+    // Strip pre-release and build metadata (anything after - or +)
+    let version = version.split(['-', '+']).next().unwrap_or(version);
+    
+    // Split into parts and take first 4
+    let parts: Vec<&str> = version.split('.').take(4).collect();
+    
+    // Parse each part as a number, defaulting to 0 if invalid
+    let major = parts.first().and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+    let minor = parts.get(1).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+    let build = parts.get(2).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+    let revision = parts.get(3).and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
+    
+    format!("{}.{}.{}.{}", major, minor, build, revision)
 }
 
 fn sanitize_identifier(input: &str, replacement: char, to_lowercase: bool) -> String {
