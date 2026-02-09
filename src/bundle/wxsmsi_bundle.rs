@@ -216,6 +216,67 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
         format!("{manufacturer}{product_name}DesktopFolderShortcut").as_bytes(),
     );
 
+    // Build URL scheme registration components (Windows)
+    let url_schemes = settings.windows_url_schemes();
+    let mut url_scheme_component_refs = Vec::new();
+    let mut url_scheme_components = Vec::new();
+
+    for scheme in url_schemes {
+        let scheme_id = sanitize_identifier(scheme, '_', false);
+        let comp_id = format!("UrlScheme_{scheme_id}_Component");
+        let guid = uuid::Uuid::new_v5(
+            &UUID_NAMESPACE,
+            format!("{manufacturer}{product_name}UrlScheme_{scheme}").as_bytes(),
+        );
+
+        let comp = Component {
+            id: Some(comp_id.clone()),
+            guid: Some(guid.to_string()),
+            registry_values: vec![
+                // Default value: "URL:<product_name> Protocol"
+                RegistryValue {
+                    root: "HKCU".to_string(),
+                    key: format!("Software\\Classes\\{scheme}"),
+                    name: None,
+                    value_type: "string".to_string(),
+                    value: format!("URL:{product_name} Protocol"),
+                    key_path: Some("yes".to_string()),
+                },
+                // URL Protocol marker (empty string)
+                RegistryValue {
+                    root: "HKCU".to_string(),
+                    key: format!("Software\\Classes\\{scheme}"),
+                    name: Some("URL Protocol".to_string()),
+                    value_type: "string".to_string(),
+                    value: String::new(),
+                    key_path: None,
+                },
+                // DefaultIcon
+                RegistryValue {
+                    root: "HKCU".to_string(),
+                    key: format!("Software\\Classes\\{scheme}\\DefaultIcon"),
+                    name: None,
+                    value_type: "string".to_string(),
+                    value: format!("[#{}],0", exe_id),
+                    key_path: None,
+                },
+                // shell\open\command
+                RegistryValue {
+                    root: "HKCU".to_string(),
+                    key: format!("Software\\Classes\\{scheme}\\shell\\open\\command"),
+                    name: None,
+                    value_type: "string".to_string(),
+                    value: format!("\"[#{}]\" \"%1\"", exe_id),
+                    key_path: None,
+                },
+            ],
+            ..Component::default()
+        };
+
+        url_scheme_components.push(comp);
+        url_scheme_component_refs.push(ComponentRef { id: comp_id });
+    }
+
     // Build the complete WiX document structure
     let wix_doc = WixDocument {
         xmlns: "http://wixtoolset.org/schemas/v4/wxs".to_string(),
@@ -242,14 +303,18 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
                 component_group_ref: ComponentGroupRef {
                     id: "ProductComponents".to_string(),
                 },
-                component_ref: vec![
-                    ComponentRef {
-                        id: "RegistryComponent".to_string(),
-                    },
-                    ComponentRef {
-                        id: "DesktopFolderShortcut".to_string(),
-                    },
-                ],
+                component_ref: {
+                    let mut refs = vec![
+                        ComponentRef {
+                            id: "RegistryComponent".to_string(),
+                        },
+                        ComponentRef {
+                            id: "DesktopFolderShortcut".to_string(),
+                        },
+                    ];
+                    refs.extend(url_scheme_component_refs);
+                    refs
+                },
             },
             wix_ui: WixUI {
                 id: "WixUI_InstallDir".to_string(),
@@ -315,17 +380,17 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
                             components: vec![Component {
                                 id: Some("RegistryComponent".to_string()),
                                 guid: Some(program_menu_folder_guid.to_string()),
-                                registry_value: Some(RegistryValue {
+                                registry_values: vec![RegistryValue {
                                     root: "HKCU".to_string(),
                                     key: format!(
                                         "Software\\{}\\{product_name}",
                                         manufacturer.to_lowercase(),
                                     ),
-                                    name: "installed".to_string(),
+                                    name: Some("installed".to_string()),
                                     value_type: "integer".to_string(),
                                     value: "1".to_string(),
-                                    key_path: "yes".to_string(),
-                                }),
+                                    key_path: Some("yes".to_string()),
+                                }],
                                 shortcut: Some(Shortcut {
                                     id: "ApplicationStartMenuShortcut".to_string(),
                                     name: product_name.to_string(),
@@ -357,17 +422,17 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
                         component: Some(Component {
                             id: Some("DesktopFolderShortcut".to_string()),
                             guid: Some(desktop_folder_shortcut_guid.to_string()),
-                            registry_value: Some(RegistryValue {
+                            registry_values: vec![RegistryValue {
                                 root: "HKCU".to_string(),
                                 key: format!(
                                     "Software\\{}\\{product_name}",
                                     manufacturer.to_lowercase(),
                                 ),
-                                name: "installed".to_string(),
+                                name: Some("installed".to_string()),
                                 value_type: "integer".to_string(),
                                 value: "1".to_string(),
-                                key_path: "yes".to_string(),
-                            }),
+                                key_path: Some("yes".to_string()),
+                            }],
                             shortcut: Some(Shortcut {
                                 id: "DesktopShortcut".to_string(),
                                 name: product_name.to_string(),
@@ -387,7 +452,7 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
                 component_group: Some(ComponentGroup {
                     id: "ProductComponents".to_string(),
                     directory: None,
-                    components: vec![],
+                    components: url_scheme_components,
                     component_refs,
                 }),
             },
@@ -595,8 +660,8 @@ struct Component {
     id: Option<String>,
     #[serde(rename = "@Guid", skip_serializing_if = "Option::is_none")]
     guid: Option<String>,
-    #[serde(rename = "RegistryValue", skip_serializing_if = "Option::is_none")]
-    registry_value: Option<RegistryValue>,
+    #[serde(rename = "RegistryValue", skip_serializing_if = "Vec::is_empty")]
+    registry_values: Vec<RegistryValue>,
     #[serde(rename = "Shortcut", skip_serializing_if = "Option::is_none")]
     shortcut: Option<Shortcut>,
     #[serde(rename = "RemoveFolder", skip_serializing_if = "Option::is_none")]
@@ -613,14 +678,14 @@ struct RegistryValue {
     root: String,
     #[serde(rename = "@Key")]
     key: String,
-    #[serde(rename = "@Name")]
-    name: String,
+    #[serde(rename = "@Name", skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
     #[serde(rename = "@Type")]
     value_type: String,
     #[serde(rename = "@Value")]
     value: String,
-    #[serde(rename = "@KeyPath")]
-    key_path: String,
+    #[serde(rename = "@KeyPath", skip_serializing_if = "Option::is_none")]
+    key_path: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

@@ -124,6 +124,8 @@ struct BundleSettings {
     osx_url_schemes: Option<Vec<String>>,
     osx_info_plist_exts: Option<Vec<String>>,
     osx_localizations: Option<HashMap<String, HashMap<String, String>>>,
+    // Windows-specific settings:
+    windows_url_schemes: Option<Vec<String>>,
     // Bundles for other binaries/examples:
     bin: Option<HashMap<String, BundleSettings>>,
     example: Option<HashMap<String, BundleSettings>>,
@@ -561,6 +563,13 @@ impl Settings {
     pub fn osx_url_schemes(&self) -> &[String] {
         match self.bundle_settings.osx_url_schemes {
             Some(ref urlosx_url_schemes) => urlosx_url_schemes.as_slice(),
+            None => &[],
+        }
+    }
+
+    pub fn windows_url_schemes(&self) -> &[String] {
+        match self.bundle_settings.windows_url_schemes {
+            Some(ref schemes) => schemes.as_slice(),
             None => &[],
         }
     }

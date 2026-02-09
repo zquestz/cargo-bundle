@@ -146,6 +146,15 @@ These settings are used only when bundling `osx` packages.
 
 * note: Github Actions and Bitbucket Pipelines both have Apple MacOS build runners/containers available to use for free 
 
+### Windows-specific settings
+
+These settings are used only when bundling `wxsmsi` packages.
+
+* `windows_url_schemes`: A list of strings indicating the URL schemes that the
+  app handles (e.g. `["myapp"]`). For each scheme, the installer registers
+  protocol handler entries under `HKCU\Software\Classes\<scheme>` so that
+  `<scheme>://` URLs are opened by the bundled executable.
+
 ### Settings for specified binary
 
 `[package.metadata.bundle]` only applies to the main executable.
