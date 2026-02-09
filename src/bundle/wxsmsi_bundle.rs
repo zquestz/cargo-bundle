@@ -218,7 +218,6 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
 
     // Build URL scheme registration components (Windows)
     let url_schemes = settings.windows_url_schemes();
-    let mut url_scheme_component_refs = Vec::new();
     let mut url_scheme_components = Vec::new();
 
     for scheme in url_schemes {
@@ -274,7 +273,6 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
         };
 
         url_scheme_components.push(comp);
-        url_scheme_component_refs.push(ComponentRef { id: comp_id });
     }
 
     // Build the complete WiX document structure
@@ -303,18 +301,14 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
                 component_group_ref: ComponentGroupRef {
                     id: "ProductComponents".to_string(),
                 },
-                component_ref: {
-                    let mut refs = vec![
-                        ComponentRef {
-                            id: "RegistryComponent".to_string(),
-                        },
-                        ComponentRef {
-                            id: "DesktopFolderShortcut".to_string(),
-                        },
-                    ];
-                    refs.extend(url_scheme_component_refs);
-                    refs
-                },
+                component_ref: vec![
+                    ComponentRef {
+                        id: "RegistryComponent".to_string(),
+                    },
+                    ComponentRef {
+                        id: "DesktopFolderShortcut".to_string(),
+                    },
+                ],
             },
             wix_ui: WixUI {
                 id: "WixUI_InstallDir".to_string(),
