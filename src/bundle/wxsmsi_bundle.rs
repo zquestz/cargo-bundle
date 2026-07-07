@@ -60,9 +60,24 @@ pub fn bundle_project(settings: &Settings) -> crate::Result<Vec<PathBuf>> {
 fn generate_wixproj_file(settings: &Settings) -> String {
     let output_name = sanitize_identifier(settings.bundle_name(), '-', true);
 
+    // Declare the MSI platform from the bundled binary's architecture so the
+    // package installs to the right Program Files and registry view. Without
+    // it the WiX SDK defaults to an x86 (Intel) package regardless of the
+    // payload. Unrecognized architectures omit the property and keep that
+    // default.
+    let installer_platform = match settings.binary_arch() {
+        "x86_64" => Some("x64".to_string()),
+        "aarch64" => Some("arm64".to_string()),
+        "x86" => Some("x86".to_string()),
+        _ => None,
+    };
+
     let wix_project = WixProject {
         sdk: "WixToolset.Sdk/6.0.2".to_string(),
-        property_group: PropertyGroup { output_name },
+        property_group: PropertyGroup {
+            output_name,
+            installer_platform,
+        },
         item_group: ItemGroup {
             package_reference: PackageReference {
                 include: "WixToolset.UI.wixext".to_string(),
@@ -356,8 +371,10 @@ fn generate_wxs_file(wxs_path: &Path, settings: &Settings) -> crate::Result<()> 
         fragments: vec![
             Fragment {
                 standard_directories: Some(vec![
+                    // Bitness-aware: resolves to ProgramFiles64Folder in
+                    // x64/arm64 packages and ProgramFilesFolder in x86 ones.
                     StandardDirectory {
-                        id: "ProgramFilesFolder".to_string(),
+                        id: "ProgramFiles6432Folder".to_string(),
                         directory: Some(Directory {
                             id: "INSTALLFOLDER".to_string(),
                             name: product_name.to_string(),
@@ -758,6 +775,8 @@ struct WixProject {
 struct PropertyGroup {
     #[serde(rename = "OutputName")]
     output_name: String,
+    #[serde(rename = "InstallerPlatform", skip_serializing_if = "Option::is_none")]
+    installer_platform: Option<String>,
 }
 
 #[derive(Serialize)]
