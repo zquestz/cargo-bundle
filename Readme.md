@@ -114,6 +114,15 @@ These settings are used only when bundling `deb` packages.
   libraries) that this package depends on to be installed.  If present, this
   forms the `Depends:` field of the `deb` package control file.
 
+### AppImage-specific settings
+
+These settings are used only when bundling `appimage` packages.
+
+* `appimage_libs`: A list of shared library sonames (e.g. `"libfoo.so.1"`)
+  copied from the build machine (found via `ldconfig -p`) into `usr/lib/` of
+  the AppImage.  You are still responsible for making the binary find them,
+  e.g. with an `$ORIGIN/../lib` rpath.
+
 ### Mac OS X-specific settings
 
 These settings are used only when bundling `osx` packages.

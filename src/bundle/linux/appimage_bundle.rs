@@ -5,7 +5,7 @@ use std::{
     ffi::OsStr,
     fs::File,
     io::{BufReader, BufWriter, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
 };
 
@@ -38,6 +38,7 @@ pub fn bundle_project(settings: &Settings) -> crate::Result<Vec<PathBuf>> {
     let binary_dest_rel = PathBuf::from("usr/bin").join(settings.binary_name());
     let binary_dest_abs = app_dir.join(binary_dest_rel.clone());
     common::copy_file(settings.binary_path(), &binary_dest_abs)?;
+    bundle_libs(settings, &app_dir)?;
     generate_icon_files(settings, &app_dir)?;
     generate_desktop_file(settings, &app_dir)?;
 
@@ -120,6 +121,30 @@ fn generate_dir_icon(settings: &Settings, app_dir: &std::path::Path) -> crate::R
         }
     }
 
+    Ok(())
+}
+
+/// Copies each shared library listed in `appimage_libs` into `usr/lib/` of the
+/// AppDir, using the first path the build machine's `ldconfig -p` cache lists.
+fn bundle_libs(settings: &Settings, app_dir: &Path) -> crate::Result<()> {
+    if settings.appimage_libs().is_empty() {
+        return Ok(());
+    }
+    let output = Command::new("ldconfig")
+        .arg("-p")
+        .output()
+        .with_context(|| "Failed to run `ldconfig -p`")?;
+    let cache = String::from_utf8_lossy(&output.stdout);
+    for soname in settings.appimage_libs() {
+        let source = cache
+            .lines()
+            .filter_map(|line| line.trim_start().split_once(' '))
+            .find(|(name, _)| *name == soname.as_str())
+            .and_then(|(_, rest)| rest.split_once(" => "))
+            .map(|(_, path)| path.trim())
+            .with_context(|| format!("Failed to find {soname} in the ldconfig cache"))?;
+        common::copy_file(Path::new(source), &app_dir.join("usr/lib").join(soname))?;
+    }
     Ok(())
 }
 

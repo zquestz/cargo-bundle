@@ -118,6 +118,7 @@ struct BundleSettings {
     linux_exec_args: Option<String>,
     linux_use_terminal: Option<bool>,
     deb_depends: Option<Vec<String>>,
+    appimage_libs: Option<Vec<String>>,
     osx_frameworks: Option<Vec<String>>,
     osx_plugins: Option<Vec<String>>,
     osx_minimum_system_version: Option<String>,
@@ -523,6 +524,13 @@ impl Settings {
     pub fn debian_dependencies(&self) -> &[String] {
         match self.bundle_settings.deb_depends {
             Some(ref dependencies) => dependencies.as_slice(),
+            None => &[],
+        }
+    }
+
+    pub fn appimage_libs(&self) -> &[String] {
+        match self.bundle_settings.appimage_libs {
+            Some(ref libs) => libs.as_slice(),
             None => &[],
         }
     }
