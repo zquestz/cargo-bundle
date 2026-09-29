@@ -135,6 +135,12 @@ fn bundle_libs(settings: &Settings, app_dir: &Path, binary: &Path) -> crate::Res
         .arg("-p")
         .output()
         .with_context(|| "Failed to run `ldconfig -p`")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "`ldconfig -p` failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
     let cache = String::from_utf8_lossy(&output.stdout);
     for soname in settings.appimage_libs() {
         let source = cache
