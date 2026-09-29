@@ -38,7 +38,7 @@ pub fn bundle_project(settings: &Settings) -> crate::Result<Vec<PathBuf>> {
     let binary_dest_rel = PathBuf::from("usr/bin").join(settings.binary_name());
     let binary_dest_abs = app_dir.join(binary_dest_rel.clone());
     common::copy_file(settings.binary_path(), &binary_dest_abs)?;
-    bundle_libs(settings, &app_dir)?;
+    bundle_libs(settings, &app_dir, &binary_dest_abs)?;
     generate_icon_files(settings, &app_dir)?;
     generate_desktop_file(settings, &app_dir)?;
 
@@ -125,8 +125,9 @@ fn generate_dir_icon(settings: &Settings, app_dir: &std::path::Path) -> crate::R
 }
 
 /// Copies each shared library listed in `appimage_libs` into `usr/lib/` of the
-/// AppDir, using the first path the build machine's `ldconfig -p` cache lists.
-fn bundle_libs(settings: &Settings, app_dir: &Path) -> crate::Result<()> {
+/// AppDir, using the first path the build machine's `ldconfig -p` cache lists,
+/// then points the bundled binary's rpath there with `patchelf`.
+fn bundle_libs(settings: &Settings, app_dir: &Path, binary: &Path) -> crate::Result<()> {
     if settings.appimage_libs().is_empty() {
         return Ok(());
     }
@@ -144,6 +145,15 @@ fn bundle_libs(settings: &Settings, app_dir: &Path) -> crate::Result<()> {
             .map(|(_, path)| path.trim())
             .with_context(|| format!("Failed to find {soname} in the ldconfig cache"))?;
         common::copy_file(Path::new(source), &app_dir.join("usr/lib").join(soname))?;
+    }
+    // DT_RPATH (not DT_RUNPATH) so it also covers the libraries' own dependencies.
+    let status = Command::new("patchelf")
+        .args(["--force-rpath", "--set-rpath", "$ORIGIN/../lib"])
+        .arg(binary)
+        .status()
+        .with_context(|| "Failed to run patchelf, does the patchelf binary exist?")?;
+    if !status.success() {
+        anyhow::bail!("patchelf failed to set the rpath of {binary:?}");
     }
     Ok(())
 }

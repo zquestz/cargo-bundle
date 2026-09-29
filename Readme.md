@@ -120,8 +120,8 @@ These settings are used only when bundling `appimage` packages.
 
 * `appimage_libs`: A list of shared library sonames (e.g. `"libfoo.so.1"`)
   copied from the build machine (found via `ldconfig -p`) into `usr/lib/` of
-  the AppImage.  You are still responsible for making the binary find them,
-  e.g. with an `$ORIGIN/../lib` rpath.
+  the AppImage.  The bundled binary's rpath is then set to `$ORIGIN/../lib`
+  with `patchelf`, which must be installed.
 
 ### Mac OS X-specific settings
 
